@@ -2,6 +2,7 @@ import React, { createContext, useState } from "react";
 
 const defaultValue = {
   partner_id: "",
+  store_id: "",
   order_id: "",
   tx_id: "",
   refresh: "",

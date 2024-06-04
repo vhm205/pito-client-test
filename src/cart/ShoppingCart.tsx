@@ -16,8 +16,11 @@ import {
   Flex,
   Spacer,
   Divider,
+  RadioGroup,
+  Radio,
 } from "@chakra-ui/react";
 import { DeleteIcon } from "@chakra-ui/icons";
+import { v4 as uuidv4 } from "uuid";
 import { fetchSession } from "../helpers";
 import { OrderContext } from "../contexts/OrderContext";
 
@@ -29,20 +32,21 @@ interface Props {
 
 export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
   const [sessionId, setSessionId] = useState("");
-  const [sessionIds, setSessionIds] = useState([]);
   const [shoppingSessions, setShoppingSessions] = useState([]);
-  const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const firstField = React.useRef(null);
   const toast = useToast();
 
-  const { setOrderContext } = useContext(OrderContext);
+  const { orderContext, setOrderContext } = useContext(OrderContext);
 
   useEffect(() => {
     const fetchShoppingCart = async () => {
       const { data: userSession, error } = await fetchSession(supabase);
       if (!userSession || error) {
-        return notify({ status: "error", description: JSON.stringify(error) });
+        return notify({
+          status: "error",
+          description: "User session not found",
+        });
       }
 
       const user = userSession.user;
@@ -51,7 +55,6 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         .from("shopping_sessions")
         .select("*, stores:store_id!inner(store_name, id)")
         .eq("customer_id", user.id);
-      console.log({ sessions });
 
       if (sessionError) {
         return notify({
@@ -64,24 +67,27 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         const { data: cartItems } = await supabase
           .from("cart_items")
           .select("*, items!inner(name, base_price)")
-          .eq("session_id", session.id);
+          .eq("session_id", session.id)
+          .order("created_at", { ascending: true });
 
         return { session, cartItems };
       });
 
       const carts: any = await Promise.all(cartsAsync);
-      const sessionsIds = carts.map((cart: any) => cart.session.id);
-      console.log({ carts });
 
       setShoppingSessions(carts);
-      setSessionId(carts[carts.length - 1]?.session.id);
-      setSessionIds(sessionsIds);
     };
 
     fetchShoppingCart();
-  }, []);
+  }, [orderContext.refresh]);
 
   const submitCart = async () => {
+    if (!sessionId)
+      return notify({
+        status: "warning",
+        description: "Please select session",
+      });
+
     try {
       setIsLoading(true);
 
@@ -95,10 +101,16 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         delivery_date: "2024-05-23",
         delivery_time: "16:30:00",
         delivery_later: false,
-        payment_method: "vnpay",
+        payment_method: "atm",
         bank_code: "NCB",
         vnpay_callback_url: "http://localhost:5173",
         order_type: "CT",
+        vat_info: {
+          name: "M2 Tech",
+          email: "m2tech@vn.com",
+          tax_code: "1111111111",
+          is_default: true,
+        },
       };
 
       const { data, error } = await supabase.functions.invoke("order", {
@@ -112,8 +124,6 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
 
       if (error) throw error;
 
-      notify({ status: "success", description: "Order created" });
-
       const response = data.data;
 
       if (response.redirectUrl) {
@@ -122,23 +132,47 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
 
         setOrderContext((curr: any) => ({ ...curr, tx_id: response.txId }));
       }
+
+      notify({
+        status: "success",
+        description: "Order created",
+        position: "top",
+      });
     } catch (error) {
       notify({ status: "error", description: error.message });
     } finally {
       setIsLoading(false);
     }
+
+    onClose();
   };
 
-  const deleteCartItem = async (id: string) => {
+  const deleteCartItem = async (id: string, sessionId: string) => {
     await supabase.from("cart_items").delete().eq("id", id);
-    notify({ status: "success", description: "Item removed from cart" });
+    const total = await supabase
+      .from("cart_items")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId);
+
+    if (!total.count) {
+      await supabase.from("shopping_sessions").delete().eq("id", sessionId);
+    }
+
+    setOrderContext((prev: any) => ({ ...prev, refresh: uuidv4() }));
+    notify({
+      status: "success",
+      description: "Item removed from cart",
+      position: "top",
+    });
   };
+
+  const onChangeSessionInput = (e: any) => setSessionId(e.target.value);
 
   const notify = (props: any) => {
     return toast({
-      ...props,
       isClosable: true,
       position: "top-right",
+      ...props,
     });
   };
 
@@ -156,42 +190,53 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
           <DrawerHeader borderBottomWidth="1px">Shopping Cart</DrawerHeader>
 
           <DrawerBody>
-            <Stack spacing="24px" mt={3}>
-              {!!shoppingSessions.length &&
-                shoppingSessions.map(({ session, cartItems }: any) => (
-                  <Box key={session.id}>
-                    <Heading size="md" textTransform="uppercase">
-                      {session.stores?.store_name}
-                    </Heading>
-                    <Divider mb={3} mt={3} />
-                    {!!cartItems.length &&
-                      cartItems.map((item: any) => (
-                        <Box key={item.id}>
-                          <Heading size="xs" textTransform="uppercase">
-                            {item.items?.name}
-                          </Heading>
-                          <Flex>
-                            <Text pt="2" fontSize="sm">
-                              {new Intl.NumberFormat("vi-VN", {
-                                style: "currency",
-                                currency: "VND",
-                              }).format(item.items?.base_price)}{" "}
-                              x {item.quantity}
-                            </Text>
-                            <Spacer />
-                            <Button
-                              type="button"
-                              className="remove-button"
-                              onClick={() => deleteCartItem(item.id)}
-                            >
-                              <DeleteIcon />
-                            </Button>
-                          </Flex>
-                        </Box>
-                      ))}
-                  </Box>
-                ))}
-            </Stack>
+            <RadioGroup name="session_id">
+              <Stack spacing="24px" mt={3}>
+                {!!shoppingSessions.length &&
+                  shoppingSessions.map(({ session, cartItems }: any) => (
+                    <Box key={session.id}>
+                      <Heading size="md" textTransform="uppercase">
+                        <Radio
+                          colorScheme="teal"
+                          value={session.id}
+                          onChange={onChangeSessionInput}
+                        >
+                          {session.stores?.store_name}
+                        </Radio>
+                      </Heading>
+                      <Text fontSize="xs">{session.id}</Text>
+                      <Divider mb={3} mt={3} />
+                      {!!cartItems.length &&
+                        cartItems.map((item: any) => (
+                          <Box key={item.id}>
+                            <Heading size="xs" textTransform="uppercase">
+                              {item.items?.name}
+                            </Heading>
+                            <Flex>
+                              <Text pt="2" fontSize="sm">
+                                {new Intl.NumberFormat("vi-VN", {
+                                  style: "currency",
+                                  currency: "VND",
+                                }).format(item.items?.base_price)}{" "}
+                                x {item.quantity}
+                              </Text>
+                              <Spacer />
+                              <Button
+                                type="button"
+                                className="remove-button"
+                                onClick={() =>
+                                  deleteCartItem(item.id, session.id)
+                                }
+                              >
+                                <DeleteIcon />
+                              </Button>
+                            </Flex>
+                          </Box>
+                        ))}
+                    </Box>
+                  ))}
+              </Stack>
+            </RadioGroup>
           </DrawerBody>
 
           <DrawerFooter borderTopWidth="1px">
@@ -201,6 +246,7 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
             <Button
               colorScheme="blue"
               onClick={submitCart}
+              disabled={!!sessionId}
               isLoading={isLoading}
             >
               Submit

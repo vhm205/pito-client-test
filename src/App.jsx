@@ -3,6 +3,7 @@ import { createClient, FunctionRegion } from "@supabase/supabase-js";
 import {
   Button,
   Flex,
+  Box,
   FormControl,
   FormLabel,
   Heading,
@@ -15,11 +16,13 @@ import {
 } from "@chakra-ui/react";
 // import { jwtDecode } from "jwt-decode";
 import { DeleteIcon } from "@chakra-ui/icons";
+import { v4 as uuidv4 } from "uuid";
+
+import { ListItems } from "./cart/ListItems";
 import { ShoppingCart } from "./cart/ShoppingCart";
+import { OrderContext } from "./contexts/OrderContext";
 
 import "./App.css";
-import { ListItems } from "./cart/ListItems";
-import { OrderContext } from "./contexts/OrderContext";
 
 const LOCAL_NON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
@@ -44,7 +47,7 @@ const payloadTemplates = {
     delivery_date: "2024-05-23",
     delivery_time: "16:30:00",
     delivery_later: false,
-    payment_method: "vnpay",
+    payment_method: "atm",
     bank_code: "NCB",
     vnpay_callback_url: "http://localhost:5173",
     order_type: "CT",
@@ -65,6 +68,10 @@ const App = () => {
   const [qrCode, setQrCode] = useState("");
   const [text, setText] = useState("");
   const [objResponse, setObjResponse] = useState({});
+  const [loading, setLoading] = useState({
+    isLoginLoading: false,
+    isSignUpLoading: false,
+  });
   const [info, setInfo] = useState({
     user: {},
     token: {},
@@ -79,11 +86,12 @@ const App = () => {
   });
   const [attributes, setAttributes] = useState([{ name: "", value: "" }]);
   const [partners, setPartners] = useState([]);
+  const [stores, setStores] = useState([]);
 
   const [searchParams, setSearchParams] = useState("");
   const search = new URLSearchParams(window.location.search);
 
-  const { orderContext } = useContext(OrderContext);
+  const { orderContext, setOrderContext } = useContext(OrderContext);
 
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -114,16 +122,40 @@ const App = () => {
 
   useEffect(() => {
     const fetchPartner = async () => {
-      const { data, error } = await supabase.from("partners").select();
+      const { data, error } = await supabase
+        .from("partners")
+        .select()
+        .eq("is_active", true);
 
       if (error) {
-        setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
+        notify({ status: "error", description: JSON.stringify(error) });
       } else {
         setPartners(data);
+        setOrderContext((prev) => ({ ...prev, partner_id: data[0].id }));
       }
     };
     fetchPartner();
   }, []);
+
+  useEffect(() => {
+    if (!orderContext.partner_id) return;
+
+    const fetchStores = async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select()
+        .eq("partner_id", orderContext.partner_id)
+        .eq("is_active", true);
+
+      if (error) {
+        notify({ status: "error", description: JSON.stringify(error) });
+      } else {
+        setStores(data);
+        setOrderContext((prev) => ({ ...prev, store_id: data[0].id }));
+      }
+    };
+    fetchStores();
+  }, [orderContext.partner_id]);
 
   useEffect(() => {
     if (!orderContext.tx_id) return;
@@ -166,66 +198,105 @@ const App = () => {
   // });
 
   const handleSignUp = async () => {
-    const { data, error } = await supabase.auth.signUp({
-      email: authInfo.email || "minh.vu@pito.vn",
-      password: authInfo.password || "Admin@102",
-      options: {
-        data: {
-          name: "Minh Moment",
-          user_type: authInfo.user_type,
-          partner_id: authInfo.partner,
-        },
-      },
-    });
-
-    if (data.session) {
-      localStorage.setItem("supabase.auth.token", JSON.stringify(data.session));
-      localStorage.setItem("supabase.auth.user", JSON.stringify(data.user));
-
-      setAuthInfo((prev) => ({
-        ...prev,
-        email: "",
-        passsword: "",
-      }));
-
-      setInfo({
-        user: data.user,
-        token: data.session,
+    if (!authInfo.email || !authInfo.password) {
+      return notify({
+        title: "You need to enter email and password",
+        status: "warn",
       });
     }
 
-    if (error) {
-      setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
-    } else {
+    setLoading((prev) => ({ ...prev, isSignUpLoading: true }));
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: authInfo.email,
+        password: authInfo.password,
+        options: {
+          data: {
+            name: "Minh Moment",
+            user_type: authInfo.user_type,
+            partner_id: authInfo.partner,
+          },
+        },
+      });
+
+      if (data.session) {
+        localStorage.setItem(
+          "supabase.auth.token",
+          JSON.stringify(data.session),
+        );
+        localStorage.setItem("supabase.auth.user", JSON.stringify(data.user));
+
+        setAuthInfo((prev) => ({
+          ...prev,
+          email: "",
+          passsword: "",
+        }));
+
+        setInfo({
+          user: data.user,
+          token: data.session,
+        });
+      }
+
+      if (error) {
+        return setText(
+          `<span style='color: red'>${JSON.stringify(error)}</span>`,
+        );
+      }
+
       setText("<span style='color: green'>Sign Up Success!!</span>");
+    } catch (error) {
+      setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
+    } finally {
+      setLoading((prev) => ({ ...prev, isSignUpLoading: false }));
     }
   };
 
   const handleSignIn = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: authInfo.email || "minh.vu@pito.vn",
-      password: authInfo.password || "Admin@102",
-    });
-
-    if (data.session) {
-      localStorage.setItem("supabase.auth.token", JSON.stringify(data.session));
-      localStorage.setItem("supabase.auth.user", JSON.stringify(data.user));
-
-      setAuthInfo((prev) => ({
-        ...prev,
-        email: "",
-        passsword: "",
-      }));
-      setInfo({
-        user: data.user,
-        token: data.session,
+    if (!authInfo.email || !authInfo.password) {
+      return notify({
+        title: "You need to enter email and password",
+        status: "warning",
       });
     }
 
-    if (error) {
-      setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
-    } else {
+    setLoading((prev) => ({ ...prev, isLoginLoading: true }));
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authInfo.email,
+        password: authInfo.password,
+      });
+
+      if (data.session) {
+        localStorage.setItem(
+          "supabase.auth.token",
+          JSON.stringify(data.session),
+        );
+        localStorage.setItem("supabase.auth.user", JSON.stringify(data.user));
+
+        setAuthInfo((prev) => ({
+          ...prev,
+          email: "",
+          passsword: "",
+        }));
+        setInfo({
+          user: data.user,
+          token: data.session,
+        });
+        setOrderContext((prev) => ({ ...prev, refresh: uuidv4() }));
+      }
+
+      if (error) {
+        setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
+      }
+
       setText("<span style='color: green'>Sign In Success!</span>");
+    } catch (error) {
+      setText(`<span style='color: red'>${JSON.stringify(error)}</span>`);
+    } finally {
+      setLoading((prev) => ({ ...prev, isLoginLoading: false }));
     }
   };
 
@@ -245,6 +316,8 @@ const App = () => {
     } else {
       setText("<span style='color: green'>Sign Out Success!</span>");
     }
+
+    setOrderContext((prev) => ({ ...prev, refresh: true }));
   };
 
   const handleTestFunction = async () => {
@@ -276,8 +349,12 @@ const App = () => {
 
       const response = data.data;
 
-      if (response && response.responseBody) {
-        setQrCode(response.responseBody?.qrDataUrl);
+      if (response) {
+        if (response.responseBody) {
+          setQrCode(response.responseBody?.qrDataUrl);
+        } else {
+          setQrCode("");
+        }
       }
 
       if (response.redirectUrl) {
@@ -318,6 +395,11 @@ const App = () => {
     } else {
       setAttributes([]);
     }
+  };
+
+  const changeOrderContext = (e) => {
+    const { name, value } = e.target;
+    setOrderContext((prev) => ({ ...prev, [name]: value }));
   };
 
   const notify = (props) => {
@@ -386,14 +468,23 @@ const App = () => {
         </div>
         <div>
           <Flex>
-            <Button onClick={handleSignIn} colorScheme="blue" mr={2}>
+            <Button
+              onClick={handleSignIn}
+              colorScheme="blue"
+              isLoading={loading.isLoginLoading}
+              mr={2}
+            >
               Sign In
             </Button>
             <Button onClick={handleSignOut} mr={2}>
               Sign Out
             </Button>
             <Spacer />
-            <Button onClick={handleSignUp} colorScheme="teal">
+            <Button
+              onClick={handleSignUp}
+              isLoading={loading.isSignUpLoading}
+              colorScheme="teal"
+            >
               Sign Up
             </Button>
           </Flex>
@@ -496,7 +587,31 @@ const App = () => {
         {/*   <OrderCard supabase={supabase} /> */}
         {/* </div> */}
 
+        <Box mb={3}>
+          <FormLabel>Partner: </FormLabel>
+          <Select name="partner_id" onChange={changeOrderContext}>
+            {!!partners.length &&
+              partners.map((partner) => (
+                <option value={partner.id} key={partner.id}>
+                  {partner.business_name} - {partner.email}
+                </option>
+              ))}
+          </Select>
+        </Box>
+        <Box mb={3}>
+          <FormLabel>Store: </FormLabel>
+          <Select name="store_id" onChange={changeOrderContext}>
+            {!!stores.length &&
+              stores.map((store) => (
+                <option value={store.id} key={store.id}>
+                  {store.store_name} - {store.email}
+                </option>
+              ))}
+          </Select>
+        </Box>
+
         <hr style={{ marginTop: "10px", marginBottom: "10px" }} />
+
         <ListItems supabase={supabase} />
         <Button w="100%" colorScheme="teal" onClick={onOpen}>
           Shopping Cart

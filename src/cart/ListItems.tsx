@@ -16,6 +16,7 @@ import {
   Text,
   useToast,
 } from "@chakra-ui/react";
+import { v4 as uuidv4 } from "uuid";
 import { fetchSession } from "../helpers";
 import { OrderContext } from "../contexts/OrderContext";
 
@@ -26,25 +27,21 @@ interface Props {
 export const ListItems: FC<Props> = ({ supabase }) => {
   const [isLoadingItem, setIsLoadingItem] = useState(false);
   const [items, setItems] = useState([]);
-  const [partners, setPartners] = useState([]);
-  const [stores, setStores] = useState([]);
-  const [formData, setFormData] = useState({
-    partner_id: "",
-    store_id: "",
-  });
   const toast = useToast();
 
-  const { setOrderContext } = useContext(OrderContext);
+  const { orderContext, setOrderContext } = useContext(OrderContext);
 
   useEffect(() => {
-    if (!formData.store_id) return;
+    if (!orderContext.store_id) return;
 
     const fetchItems = async () => {
       setIsLoadingItem(true);
       const { data, error } = await supabase
         .from("items")
         .select("*")
-        .eq("store_id", formData.store_id)
+        .eq("store_id", orderContext.store_id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
         .limit(10);
 
       if (error) {
@@ -55,50 +52,7 @@ export const ListItems: FC<Props> = ({ supabase }) => {
       setIsLoadingItem(false);
     };
     fetchItems();
-  }, [formData.store_id]);
-
-  useEffect(() => {
-    const fetchPartner = async () => {
-      const { data, error } = await supabase.from("partners").select();
-
-      if (error) {
-        notify({ status: "error", description: JSON.stringify(error) });
-      } else {
-        setFormData((prev) => ({ ...prev, partner_id: data[0].id }));
-        setPartners(data);
-      }
-    };
-    fetchPartner();
-  }, []);
-
-  useEffect(() => {
-    if (!formData.partner_id) return;
-
-    const fetchStores = async () => {
-      const { data, error } = await supabase
-        .from("stores")
-        .select()
-        .eq("partner_id", formData.partner_id);
-
-      if (error) {
-        notify({ status: "error", description: JSON.stringify(error) });
-      } else {
-        setFormData((prev) => ({ ...prev, store_id: data[0].id }));
-        setStores(data);
-      }
-    };
-    fetchStores();
-  }, [formData.partner_id]);
-
-  const onChangeInput = (e: any) => {
-    const { name, value } = e.target;
-
-    if (name === "partner_id") {
-      setOrderContext((curr: any) => ({ ...curr, partner_id: value }));
-    }
-
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  }, [orderContext.store_id]);
 
   const notify = (props: any) => {
     return toast({
@@ -110,36 +64,15 @@ export const ListItems: FC<Props> = ({ supabase }) => {
 
   return (
     <>
-      <Box mb={3}>
-        <FormLabel>Partner: </FormLabel>
-        <Select name="partner_id" onChange={onChangeInput}>
-          {!!partners.length &&
-            partners.map((partner: any) => (
-              <option value={partner.id} key={partner.id}>
-                {partner.business_name} - {partner.email}
-              </option>
-            ))}
-        </Select>
-      </Box>
-      <Box mb={3}>
-        <FormLabel>Store: </FormLabel>
-        <Select name="store_id" onChange={onChangeInput}>
-          {!!stores.length &&
-            stores.map((store: any) => (
-              <option value={store.id} key={store.id}>
-                {store.store_name} - {store.email}
-              </option>
-            ))}
-        </Select>
-      </Box>
       <Skeleton isLoaded={!isLoadingItem}>
         <SimpleGrid minChildWidth="220px" spacing="40px">
           {!!items.length &&
             items.map((item: any) => (
               <Item
                 key={item.id}
-                partner_id={formData.partner_id}
+                store_id={orderContext.store_id}
                 supabase={supabase}
+                setOrderContext={setOrderContext}
                 notify={notify}
                 toast={toast}
                 {...item}
@@ -157,10 +90,11 @@ const Item: FC = ({
   name,
   description,
   options_and_choices,
-  partner_id,
+  store_id,
   notify,
   toast,
   supabase,
+  setOrderContext,
 }: any) => {
   const addProductToCart = async () => {
     const promise = new Promise(async (resolve, reject) => {
@@ -175,33 +109,27 @@ const Item: FC = ({
         const user = userSession.user;
         let sessionId = null;
 
-        // const session = await supabase
-        //   .from("shopping_sessions")
-        //   .select("*")
-        //   .eq("customer_id", user.id)
-        //   .single();
-        // console.log({ session });
-        //
-        // if (!session.data || session.error) {
-        const store = await supabase
-          .from("stores")
-          .select("*")
-          .eq("partner_id", partner_id)
-          .single();
-
-        const newSession = await supabase
+        const session = await supabase
           .from("shopping_sessions")
-          .insert({
-            store_id: store.data?.id,
-            customer_id: user.id,
-          })
-          .select("id")
+          .select("*")
+          .eq("customer_id", user.id)
+          .eq("store_id", store_id)
           .single();
 
-        sessionId = newSession.data?.id;
-        // } else {
-        //   sessionId = session.data.id;
-        // }
+        if (!session.data || session.error) {
+          const newSession = await supabase
+            .from("shopping_sessions")
+            .insert({
+              store_id,
+              customer_id: user.id,
+            })
+            .select("id")
+            .single();
+
+          sessionId = newSession.data?.id;
+        } else {
+          sessionId = session.data.id;
+        }
 
         const newCartItem = await supabase.from("cart_items").insert({
           session_id: sessionId,
@@ -210,7 +138,6 @@ const Item: FC = ({
           notes: description,
           raw_options_choices: options_and_choices,
         });
-        console.log({ newCartItem });
 
         if (newCartItem.error) {
           notify({
@@ -221,6 +148,7 @@ const Item: FC = ({
         }
 
         resolve("Looks great");
+        setOrderContext((prev: any) => ({ ...prev, refresh: uuidv4() }));
       } catch (error) {
         console.log({ error });
         return reject(error.message);
