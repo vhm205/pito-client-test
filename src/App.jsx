@@ -11,6 +11,9 @@ import {
   Select,
   Spacer,
   Text,
+  Wrap,
+  WrapItem,
+  Checkbox,
   useDisclosure,
   useToast,
 } from "@chakra-ui/react";
@@ -21,6 +24,7 @@ import { v4 as uuidv4 } from "uuid";
 import { ListItems } from "./cart/ListItems";
 import { ShoppingCart } from "./cart/ShoppingCart";
 import { OrderContext } from "./contexts/OrderContext";
+import { fetchSession } from "./helpers";
 
 import "./App.css";
 
@@ -71,6 +75,7 @@ const App = () => {
   const [loading, setLoading] = useState({
     isLoginLoading: false,
     isSignUpLoading: false,
+    isCreateOrderLoading: false,
   });
   const [info, setInfo] = useState({
     user: {},
@@ -87,6 +92,7 @@ const App = () => {
   const [attributes, setAttributes] = useState([{ name: "", value: "" }]);
   const [partners, setPartners] = useState([]);
   const [stores, setStores] = useState([]);
+  const [partnerIds, setPartnerIds] = useState([]);
 
   const [searchParams, setSearchParams] = useState("");
   const search = new URLSearchParams(window.location.search);
@@ -402,12 +408,129 @@ const App = () => {
     setOrderContext((prev) => ({ ...prev, [name]: value }));
   };
 
+  const changePartnerIds = (e) => {
+    const { value, checked } = e.target;
+
+    if (!checked) {
+      const newPartnerIds = partnerIds.filter((item) => item !== value);
+      setPartnerIds(newPartnerIds);
+    } else {
+      setPartnerIds((prev) => [...prev, value]);
+    }
+  };
+
   const notify = (props) => {
     toast({
       ...props,
       isClosable: true,
       position: "top-right",
     });
+  };
+
+  const executeCreateMultipleOrder = async () => {
+    console.log({ partnerIds });
+    if (!partnerIds || !partnerIds.length) {
+      return notify({ title: "Please choose partner", status: "error" });
+    }
+
+    setLoading((prev) => ({ ...prev, isCreateOrderLoading: true }));
+    try {
+      const { data: userSession, error } = await fetchSession(supabase);
+      if (!userSession || error) {
+        return notify({
+          status: "error",
+          description: "User session not found",
+        });
+      }
+
+      const user = userSession.user;
+
+      const asyncTasks = partnerIds.map(async (partnerId) => {
+        const storeSession = await supabase
+          .from("stores")
+          .select()
+          .eq("partner_id", partnerId)
+          .eq("is_active", true)
+          .limit(1)
+          .single();
+        const storeId = storeSession.data?.id;
+
+        let sessionId = null;
+
+        const session = await supabase
+          .from("shopping_sessions")
+          .select("*")
+          .eq("customer_id", user.id)
+          .eq("store_id", storeId)
+          .limit(1)
+          .single();
+
+        if (!session.data || session.error) {
+          const newSession = await supabase
+            .from("shopping_sessions")
+            .insert({
+              store_id: storeId,
+              customer_id: user.id,
+            })
+            .select("id")
+            .single();
+
+          sessionId = newSession.data?.id;
+        } else {
+          sessionId = session.data.id;
+        }
+
+        const item = await supabase
+          .from("items")
+          .select("*")
+          .eq("store_id", storeId)
+          .limit(1)
+          .single();
+        const { id: itemId, options_and_choices } = item.data;
+
+        await supabase.from("cart_items").insert({
+          session_id: sessionId,
+          item_id: itemId,
+          quantity: 4,
+          notes: "Note something",
+          raw_options_choices: options_and_choices,
+        });
+
+        const payload = {
+          session_id: sessionId,
+          discount_amount: 0,
+          shipping_fee: 0,
+          receiver_name: "User Test",
+          receiver_phone: "+84559932493",
+          delivery_address: "112 Điện biên phủ",
+          delivery_date: "2024-05-23",
+          delivery_time: "16:30:00",
+          delivery_later: false,
+          payment_method: "atm",
+          bank_code: "NCB",
+          vnpay_callback_url: "https://pito.vn",
+          order_type: "CT",
+        };
+
+        const { data } = await supabase.functions.invoke("order", {
+          headers: {
+            "x-invoke-func": "create-order",
+          },
+          body: {
+            payload,
+          },
+        });
+        return data;
+      });
+
+      const result = await Promise.allSettled(asyncTasks);
+      console.log({ result });
+      notify({ title: "Create Multiple Orders Success", status: "success" });
+    } catch (error) {
+      notify({ title: error.message, status: "error" });
+    }
+
+    setLoading((prev) => ({ ...prev, isCreateOrderLoading: false }));
   };
 
   return (
@@ -623,6 +746,41 @@ const App = () => {
         <Button w="100%" colorScheme="teal" onClick={onOpen}>
           Shopping Cart
         </Button>
+        <hr style={{ marginTop: "20px", marginBottom: "20px" }} />
+
+        <div>
+          <Heading size="xl">Multiple Shopping cart</Heading>
+        </div>
+
+        <Box height="500px" border="1px solid black" p={5} overflowY="scroll">
+          <Wrap spacing="30px">
+            <WrapItem>
+              <Box h="80px" lineHeight={9}>
+                {!!partners.length &&
+                  partners.map((partner) => (
+                    <Checkbox
+                      key={partner.id}
+                      value={partner.id}
+                      mr={5}
+                      onChange={changePartnerIds}
+                    >
+                      {partner.business_name} - {partner.email}
+                    </Checkbox>
+                  ))}
+              </Box>
+            </WrapItem>
+          </Wrap>
+        </Box>
+        <Button
+          w="100%"
+          mt={3}
+          colorScheme="blue"
+          isLoading={loading.isCreateOrderLoading}
+          onClick={executeCreateMultipleOrder}
+        >
+          Execute
+        </Button>
+
         <ShoppingCart supabase={supabase} isOpen={isOpen} onClose={onClose} />
       </div>
     </>
