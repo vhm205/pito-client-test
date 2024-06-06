@@ -38,7 +38,7 @@ const supabase = createClient(
 
 const payloadTemplates = {
   "create-order": {
-    session_id: "d9ec632c-ecc0-4bd4-8e99-43fe171310dd",
+    session_id: "82f0910a-6dd3-418c-8bbe-dfc6f3ba8bb6",
     discount_amount: 0,
     shipping_fee: 0,
     receiver_name: "User Test",
@@ -49,7 +49,7 @@ const payloadTemplates = {
     delivery_later: false,
     payment_method: "atm",
     bank_code: "NCB",
-    vnpay_callback_url: "http://localhost:5173",
+    vnpay_callback_url: "https://pito.vn",
     order_type: "CT",
   },
   "get-order-detail-of-partner": {
@@ -421,7 +421,7 @@ const App = () => {
         )}
         <pre>{JSON.stringify(info.user, null, 2)}</pre>
         <p dangerouslySetInnerHTML={{ __html: text }} />
-        <form>
+        <form style={{ marginBottom: "10px" }}>
           <Heading size="xl">Login Form</Heading>
           <div style={{ marginTop: "5px" }}>
             <Input
@@ -444,7 +444,7 @@ const App = () => {
               onChange={onChangeInput}
             />
           </div>
-          <div>
+          <div style={{ marginTop: "10px" }}>
             <label>Role: </label>
             <Select name="user_type" onChange={onChangeInput}>
               <option value="customer">Customer</option>
@@ -453,19 +453,21 @@ const App = () => {
             </Select>
           </div>
         </form>
-        <div style={{ marginBottom: "5px" }}>
-          <div>
-            <label>Partner: </label>
-            <Select name="partner" onChange={onChangeInput}>
-              {!!partners.length &&
-                partners.map((partner) => (
-                  <option value={partner.id} key={partner.id}>
-                    {partner.business_name} - {partner.email}
-                  </option>
-                ))}
-            </Select>
+        {authInfo.user_type === "partner" && (
+          <div style={{ marginBottom: "10px" }}>
+            <div>
+              <label>Partner: </label>
+              <Select name="partner" onChange={onChangeInput}>
+                {!!partners.length &&
+                  partners.map((partner) => (
+                    <option value={partner.id} key={partner.id}>
+                      {partner.business_name} - {partner.email}
+                    </option>
+                  ))}
+              </Select>
+            </div>
           </div>
-        </div>
+        )}
         <div>
           <Flex>
             <Button
@@ -489,7 +491,7 @@ const App = () => {
             </Button>
           </Flex>
         </div>
-        <hr style={{ marginTop: "10px", marginBottom: "10px" }} />
+        <hr style={{ marginTop: "20px", marginBottom: "20px" }} />
         <div>
           <div>
             <Heading size="xl">Test Function</Heading>
@@ -523,6 +525,9 @@ const App = () => {
                   </option>
                   <option value="get-order-detail-of-partner">
                     get-order-detail-of-partner
+                  </option>
+                  <option value="get-total-order-by-status">
+                    get-total-order-by-status
                   </option>
                 </optgroup>
               </Select>
@@ -583,9 +588,11 @@ const App = () => {
           Invoke Function
         </button>
 
-        {/* <div style={{ display: "flex", justifyContent: "center" }}> */}
-        {/*   <OrderCard supabase={supabase} /> */}
-        {/* </div> */}
+        <hr style={{ marginTop: "20px", marginBottom: "20px" }} />
+
+        <div>
+          <Heading size="xl">Shopping cart</Heading>
+        </div>
 
         <Box mb={3}>
           <FormLabel>Partner: </FormLabel>

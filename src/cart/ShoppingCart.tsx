@@ -103,7 +103,7 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         delivery_later: false,
         payment_method: "atm",
         bank_code: "NCB",
-        vnpay_callback_url: "http://localhost:5173",
+        vnpay_callback_url: "https://pito.vn",
         order_type: "CT",
         vat_info: {
           name: "M2 Tech",
