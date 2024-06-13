@@ -155,7 +155,7 @@ const App = () => {
 
       if (error) {
         notify({ status: "error", description: JSON.stringify(error) });
-      } else {
+      } else if (data.length) {
         setPartners(data);
         setOrderContext((prev) => ({ ...prev, partner_id: data[0].id }));
       }
