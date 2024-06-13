@@ -122,6 +122,7 @@ const Item: FC = ({
             .insert({
               store_id,
               customer_id: user.id,
+              shipping_fee: 10_000,
             })
             .select("id")
             .single();
@@ -131,12 +132,16 @@ const Item: FC = ({
           sessionId = session.data.id;
         }
 
+        const quantity = getRandomInt(1, 5);
+        const total_price = base_price * quantity;
+
         const newCartItem = await supabase.from("cart_items").insert({
           session_id: sessionId,
           item_id: id,
-          quantity: getRandomInt(1, 5),
+          quantity,
           notes: description,
           raw_options_choices: options_and_choices,
+          total_price,
         });
 
         if (newCartItem.error) {

@@ -1,5 +1,11 @@
 import { useState, useEffect, useContext } from "react";
-import { createClient, FunctionRegion } from "@supabase/supabase-js";
+import {
+  createClient,
+  FunctionRegion,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  FunctionsFetchError,
+} from "@supabase/supabase-js";
 import {
   Button,
   Flex,
@@ -27,24 +33,32 @@ import { OrderContext } from "./contexts/OrderContext";
 import { fetchSession } from "./helpers";
 
 import "./App.css";
+import ModalLoading from "./components/ModalLoading";
 
-const LOCAL_NON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
-const REMOTE_NON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1YXdxbndybm1mdnN4cnZtcnR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTUwNTU0MjUsImV4cCI6MjAzMDYzMTQyNX0.vycUFsNit8nqJx4E6M-M_oU6WhLHilEu-BmEb2LU5DQ";
+const {
+  VITE_ENV,
+  VITE_NON_KEY_DEV,
+  VITE_NON_KEY_STAGING,
+  VITE_SUPABASE_URL_DEV,
+  VITE_SUPABASE_URL_STAGING,
+} = import.meta.env;
 
-const supabase = createClient(
-  // "http://127.0.0.1:54321",
-  // LOCAL_NON_KEY,
-  "https://api-dev.pito.vn",
-  REMOTE_NON_KEY,
-);
+const domain = {
+  dev: VITE_SUPABASE_URL_DEV,
+  staging: VITE_SUPABASE_URL_STAGING,
+};
+
+const nonKey = {
+  dev: VITE_NON_KEY_DEV,
+  staging: VITE_NON_KEY_STAGING,
+};
+console.log({ domain, nonKey });
+
+const supabase = createClient(domain[VITE_ENV], nonKey[VITE_ENV]);
 
 const payloadTemplates = {
   "create-order": {
     session_id: "82f0910a-6dd3-418c-8bbe-dfc6f3ba8bb6",
-    discount_amount: 0,
-    shipping_fee: 0,
     receiver_name: "User Test",
     receiver_phone: "+84559932493",
     delivery_address: "112 Điện biên phủ",
@@ -52,7 +66,7 @@ const payloadTemplates = {
     delivery_time: "16:30:00",
     delivery_later: false,
     payment_method: "atm",
-    bank_code: "NCB",
+    bank_code: "ATM",
     vnpay_callback_url: "https://pito.vn",
     order_type: "CT",
   },
@@ -71,6 +85,7 @@ const payloadTemplates = {
 const App = () => {
   const [qrCode, setQrCode] = useState("");
   const [text, setText] = useState("");
+  const [isDonePayment, setIsDonePayment] = useState(false);
   const [objResponse, setObjResponse] = useState({});
   const [loading, setLoading] = useState({
     isLoginLoading: false,
@@ -101,6 +116,11 @@ const App = () => {
 
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isOpenProgressModal,
+    onOpen: onOpenProgressModal,
+    onClose: onCloseProgressModal,
+  } = useDisclosure();
 
   const handleAddAttribute = () => {
     setAttributes([...attributes, { name: "", value: "" }]);
@@ -182,6 +202,7 @@ const App = () => {
 
           if (id === orderContext.tx_id && status === "completed") {
             notify({ title: "Payment Success!!", status: "success" });
+            setIsDonePayment(true);
           }
         },
       )
@@ -335,6 +356,7 @@ const App = () => {
         payload[attr.name] = attr.value;
       });
 
+      setText("");
       notify({ title: "Fetching...", status: "info" });
       const { data, error } = await supabase.functions.invoke(route_name, {
         region: FunctionRegion.ApSoutheast1,
@@ -345,31 +367,52 @@ const App = () => {
           payload,
         },
       });
-      notify({ title: "Fetch Success", status: "success" });
+      let errorMessage = error?.message;
+      let errorJson = null;
 
-      setObjResponse(data);
-
-      if (error) {
-        throw error;
+      if (error instanceof FunctionsHttpError) {
+        const errorMsg = await error.context.json();
+        errorJson = errorMsg;
+        errorMessage = errorMsg.message;
+        console.log("Function returned an error", errorMsg);
+      } else if (error instanceof FunctionsRelayError) {
+        console.log("Relay error:", error.message);
+      } else if (error instanceof FunctionsFetchError) {
+        console.log("Fetch error:", error.message);
       }
 
-      const response = data.data;
+      setObjResponse({ data, error, errorMessage, errorJson });
+
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      notify({ title: "Fetch Success", status: "success" });
+
+      const response = data?.data;
 
       if (response) {
+        onOpenProgressModal();
+        setOrderContext((curr) => ({ ...curr, tx_id: response.txId }));
+
+        // Payment with ACB
         if (response.responseBody) {
           setQrCode(response.responseBody?.qrDataUrl);
         } else {
           setQrCode("");
         }
-      }
 
-      if (response.redirectUrl) {
-        setTimeout(() => {
-          const redirectTo = response.redirectUrl || "/";
-          window.location.href = redirectTo;
-        }, 1000);
+        // Payment with VNPAY
+        if (response.redirectUrl) {
+          setTimeout(() => {
+            const redirectTo = response.redirectUrl || "/";
+            window.open(redirectTo, "_blank");
+            // window.location.href = redirectTo;
+          }, 1000);
+        }
       }
     } catch (error) {
+      console.error({ error });
       notify({ title: error.message, status: "error" });
       setText(`<span style='color: red'>${error.message}</span>`);
     }
@@ -428,7 +471,6 @@ const App = () => {
   };
 
   const executeCreateMultipleOrder = async () => {
-    console.log({ partnerIds });
     if (!partnerIds || !partnerIds.length) {
       return notify({ title: "Please choose partner", status: "error" });
     }
@@ -471,6 +513,7 @@ const App = () => {
             .insert({
               store_id: storeId,
               customer_id: user.id,
+              shipping_fee: 10_000,
             })
             .select("id")
             .single();
@@ -484,22 +527,25 @@ const App = () => {
           .from("items")
           .select("*")
           .eq("store_id", storeId)
+          .eq("is_active", true)
           .limit(1)
           .single();
-        const { id: itemId, options_and_choices } = item.data;
+        const { id: itemId, base_price, options_and_choices } = item.data;
+
+        const quantity = getRandomInt(1, 5);
+        const total_price = base_price * quantity;
 
         await supabase.from("cart_items").insert({
           session_id: sessionId,
           item_id: itemId,
-          quantity: 4,
+          quantity,
           notes: "Note something",
           raw_options_choices: options_and_choices,
+          total_price,
         });
 
         const payload = {
           session_id: sessionId,
-          discount_amount: 0,
-          shipping_fee: 0,
           receiver_name: "User Test",
           receiver_phone: "+84559932493",
           delivery_address: "112 Điện biên phủ",
@@ -507,7 +553,7 @@ const App = () => {
           delivery_time: "16:30:00",
           delivery_later: false,
           payment_method: "atm",
-          bank_code: "NCB",
+          bank_code: "ATM",
           vnpay_callback_url: "https://pito.vn",
           order_type: "CT",
         };
@@ -771,6 +817,7 @@ const App = () => {
             </WrapItem>
           </Wrap>
         </Box>
+
         <Button
           w="100%"
           mt={3}
@@ -783,8 +830,22 @@ const App = () => {
 
         <ShoppingCart supabase={supabase} isOpen={isOpen} onClose={onClose} />
       </div>
+
+      <ModalLoading
+        isOpen={isOpenProgressModal}
+        onClose={onCloseProgressModal}
+        isDone={isDonePayment}
+      />
     </>
   );
 };
+
+function getRandomInt(min, max) {
+  // Đảm bảo rằng giá trị min và max được bao gồm
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  // Sinh ra số ngẫu nhiên trong khoảng từ min (bao gồm) đến max (bao gồm)
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 export default App;

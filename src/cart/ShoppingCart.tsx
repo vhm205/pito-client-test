@@ -23,6 +23,11 @@ import { DeleteIcon } from "@chakra-ui/icons";
 import { v4 as uuidv4 } from "uuid";
 import { fetchSession } from "../helpers";
 import { OrderContext } from "../contexts/OrderContext";
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+} from "@supabase/supabase-js";
 
 interface Props {
   supabase: any;
@@ -93,8 +98,6 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
 
       const payload = {
         session_id: sessionId,
-        discount_amount: 0,
-        shipping_fee: 0,
         receiver_name: "User Test",
         receiver_phone: "+84559932493",
         delivery_address: "112 Điện biên phủ",
@@ -102,13 +105,14 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         delivery_time: "16:30:00",
         delivery_later: false,
         payment_method: "atm",
-        bank_code: "NCB",
+        bank_code: "ATM",
         vnpay_callback_url: "https://pito.vn",
         order_type: "CT",
         vat_info: {
           name: "M2 Tech",
           email: "m2tech@vn.com",
           tax_code: "1111111111",
+          address: "111 Điện biên phủ",
           is_default: true,
         },
       };
@@ -121,10 +125,25 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
           payload,
         },
       });
+      let errorMessage = error?.message;
+      let errorJson = null;
 
-      if (error) throw error;
+      if (error instanceof FunctionsHttpError) {
+        const errorMsg = await error.context.json();
+        errorJson = errorMsg;
+        errorMessage = errorMsg.message;
+        console.log("Function returned an error", errorMsg);
+      } else if (error instanceof FunctionsRelayError) {
+        console.log("Relay error:", error.message);
+      } else if (error instanceof FunctionsFetchError) {
+        console.log("Fetch error:", error.message);
+      }
 
-      const response = data.data;
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      const response = data?.data;
 
       if (response.redirectUrl) {
         const redirectTo = response.redirectUrl || "/";
@@ -145,6 +164,19 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
     }
 
     onClose();
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    await Promise.all([
+      supabase.from("shopping_sessions").delete().eq("id", sessionId),
+      supabase.from("cart_items").delete().eq("session_id", sessionId),
+    ]);
+    setOrderContext((prev: any) => ({ ...prev, refresh: uuidv4() }));
+    notify({
+      status: "success",
+      description: "Remove shopping session success!",
+      position: "top",
+    });
   };
 
   const deleteCartItem = async (id: string, sessionId: string) => {
@@ -195,14 +227,26 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
                 {!!shoppingSessions.length &&
                   shoppingSessions.map(({ session, cartItems }: any) => (
                     <Box key={session.id}>
-                      <Heading size="md" textTransform="uppercase">
-                        <Radio
-                          colorScheme="teal"
-                          value={session.id}
-                          onChange={onChangeSessionInput}
-                        >
-                          {session.stores?.store_name}
-                        </Radio>
+                      <Heading size="md" textTransform="uppercase" mb={3}>
+                        <Flex>
+                          <Radio
+                            colorScheme="teal"
+                            value={session.id}
+                            onChange={onChangeSessionInput}
+                          >
+                            {session.stores?.store_name}
+                          </Radio>
+                          <Spacer />
+                          <Button
+                            size="sm"
+                            colorScheme="red"
+                            type="button"
+                            className="remove-button"
+                            onClick={() => deleteSession(session.id)}
+                          >
+                            <DeleteIcon />
+                          </Button>
+                        </Flex>
                       </Heading>
                       <Text fontSize="xs">{session.id}</Text>
                       <Divider mb={3} mt={3} />
