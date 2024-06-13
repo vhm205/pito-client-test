@@ -52,7 +52,6 @@ const nonKey = {
   dev: VITE_NON_KEY_DEV,
   staging: VITE_NON_KEY_STAGING,
 };
-console.log({ domain, nonKey });
 
 const supabase = createClient(domain[VITE_ENV], nonKey[VITE_ENV]);
 
@@ -158,6 +157,10 @@ const App = () => {
       } else if (data.length) {
         setPartners(data);
         setOrderContext((prev) => ({ ...prev, partner_id: data[0].id }));
+        setAuthInfo((prev) => ({
+          ...prev,
+          partner: data[0].id,
+        }));
       }
     };
     fetchPartner();
@@ -191,13 +194,12 @@ const App = () => {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
           table: "transactions",
           filter: `id=eq.${orderContext.tx_id}`,
         },
         (payload) => {
-          console.log({ payload });
           const { id, status } = payload.new;
 
           if (id === orderContext.tx_id && status === "completed") {
