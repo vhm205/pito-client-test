@@ -84,7 +84,10 @@ const payloadTemplates = {
 const App = () => {
   const [qrCode, setQrCode] = useState("");
   const [text, setText] = useState("");
-  const [isDonePayment, setIsDonePayment] = useState(false);
+  const [paymentResponse, setPaymentResponse] = useState({
+    isDonePayment: false,
+    status: "",
+  });
   const [objResponse, setObjResponse] = useState({});
   const [loading, setLoading] = useState({
     isLoginLoading: false,
@@ -98,8 +101,10 @@ const App = () => {
   const [authInfo, setAuthInfo] = useState({
     email: "",
     password: "",
+    fullname: "",
+    phone: "",
     user_type: "customer",
-    partner: "61430bf1-ddee-42e6-9fbe-42c4b9461de9",
+    partner: "",
     route_name: "order",
     function_name: "create-order",
   });
@@ -145,6 +150,20 @@ const App = () => {
     changeFunction(authInfo.function_name);
   }, [authInfo.function_name]);
 
+  // useEffect(() => {
+  //   const fetchData = async () => {
+  //     const { data, error } = await supabase
+  //       .from("orders")
+  //       .select()
+  //       .eq("order_code", "CTMQJ0007")
+  //       .limit(1)
+  //       .single();
+  //     console.log({ data, error });
+  //   };
+  //
+  //   fetchData();
+  // }, []);
+
   useEffect(() => {
     const fetchPartner = async () => {
       const { data, error } = await supabase
@@ -155,14 +174,17 @@ const App = () => {
       if (error) {
         notify({ status: "error", description: JSON.stringify(error) });
       } else if (data.length) {
+        const firstPartner = data[0].id;
+
         setPartners(data);
-        setOrderContext((prev) => ({ ...prev, partner_id: data[0].id }));
+        setOrderContext((prev) => ({ ...prev, partner_id: firstPartner }));
         setAuthInfo((prev) => ({
           ...prev,
-          partner: data[0].id,
+          partner: firstPartner,
         }));
       }
     };
+
     fetchPartner();
   }, []);
 
@@ -200,12 +222,24 @@ const App = () => {
           filter: `id=eq.${orderContext.tx_id}`,
         },
         (payload) => {
+          console.log({ payload });
           const { id, status } = payload.new;
 
-          if (id === orderContext.tx_id && status === "completed") {
-            notify({ title: "Payment Success!!", status: "success" });
-            setIsDonePayment(true);
+          if (id === orderContext.tx_id) {
+            if (status === "completed") {
+              notify({ title: "Payment Success!!", status: "success" });
+              setOrderContext((prev) => ({ ...prev, refresh: uuidv4() }));
+            }
+
+            if (status === "failed") {
+              notify({ title: "Payment failed!!", status: "warning" });
+            }
           }
+
+          setPaymentResponse({
+            status,
+            isDonePayment: true,
+          });
         },
       )
       .subscribe();
@@ -242,7 +276,9 @@ const App = () => {
         password: authInfo.password,
         options: {
           data: {
-            name: "Minh Moment",
+            name: authInfo.fullname,
+            phone: authInfo.phone,
+            gender: "male",
             user_type: authInfo.user_type,
             partner_id: authInfo.partner,
           },
@@ -260,6 +296,8 @@ const App = () => {
           ...prev,
           email: "",
           passsword: "",
+          fullname: "",
+          phone: "",
         }));
 
         setInfo({
@@ -309,6 +347,8 @@ const App = () => {
           ...prev,
           email: "",
           passsword: "",
+          fullname: "",
+          phone: "",
         }));
         setInfo({
           user: data.user,
@@ -598,7 +638,7 @@ const App = () => {
             <Input
               type="email"
               name="email"
-              placeholder="Enter email"
+              placeholder="Enter email *"
               autoComplete="email"
               value={authInfo.email}
               onChange={onChangeInput}
@@ -609,9 +649,29 @@ const App = () => {
             <Input
               type="password"
               name="password"
-              placeholder="Enter password"
+              placeholder="Enter password *"
               autoComplete="current-password"
               value={authInfo.password}
+              onChange={onChangeInput}
+            />
+          </div>
+          <div>
+            <Input
+              type="text"
+              name="fullname"
+              placeholder="Enter fullname"
+              autoComplete="name"
+              value={authInfo.fullname}
+              onChange={onChangeInput}
+            />
+          </div>
+          <div>
+            <Input
+              type="text"
+              name="phone"
+              placeholder="Enter phone"
+              autoComplete="tel"
+              value={authInfo.phone}
               onChange={onChangeInput}
             />
           </div>
@@ -836,7 +896,8 @@ const App = () => {
       <ModalLoading
         isOpen={isOpenProgressModal}
         onClose={onCloseProgressModal}
-        isDone={isDonePayment}
+        isDone={paymentResponse.isDonePayment}
+        status={paymentResponse.status}
       />
     </>
   );
