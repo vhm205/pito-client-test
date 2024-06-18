@@ -39,18 +39,22 @@ const {
   VITE_ENV,
   VITE_NON_KEY_DEV,
   VITE_NON_KEY_STAGING,
+  VITE_NON_KEY_PRODUCTION,
   VITE_SUPABASE_URL_DEV,
   VITE_SUPABASE_URL_STAGING,
+  VITE_SUPABASE_URL_PRODUCTION,
 } = import.meta.env;
 
 const domain = {
   dev: VITE_SUPABASE_URL_DEV,
   staging: VITE_SUPABASE_URL_STAGING,
+  production: VITE_SUPABASE_URL_PRODUCTION,
 };
 
 const nonKey = {
   dev: VITE_NON_KEY_DEV,
   staging: VITE_NON_KEY_STAGING,
+  production: VITE_NON_KEY_PRODUCTION,
 };
 
 const supabase = createClient(domain[VITE_ENV], nonKey[VITE_ENV]);
