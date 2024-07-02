@@ -115,6 +115,10 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
           address: "111 Điện biên phủ",
           is_default: true,
         },
+        voucher_ids: [
+          "aa76ca9d-b185-4099-85f6-e3721e750210",
+          // "db724b2a-bc40-44b2-b534-399ffe54f6db",
+        ],
       };
 
       const { data, error } = await supabase.functions.invoke("order", {

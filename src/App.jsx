@@ -83,6 +83,11 @@ const payloadTemplates = {
     status: "",
     store_id: "a304a0d4-7f2f-4328-af7d-237540d68fce",
   },
+  "update-partner-order-status": {
+    order_id: "",
+    status: "completed", // canceled | prepared
+  },
+  "get-total-order-by-status": {},
 };
 
 const App = () => {
@@ -154,19 +159,29 @@ const App = () => {
     changeFunction(authInfo.function_name);
   }, [authInfo.function_name]);
 
-  // useEffect(() => {
-  //   const fetchData = async () => {
-  //     const { data, error } = await supabase
-  //       .from("orders")
-  //       .select()
-  //       .eq("order_code", "CTMQJ0007")
-  //       .limit(1)
-  //       .single();
-  //     console.log({ data, error });
-  //   };
-  //
-  //   fetchData();
-  // }, []);
+  useEffect(() => {
+    const uid = "556c2fad-0a43-4413-9ee2-27776dc6c53a";
+    const fetchData = async () => {
+      const { data, error } = await supabase
+        .from("user_vouchers")
+        .select()
+        .eq("user_id", uid)
+        .eq("voucher_id", "c8e79146-5967-4b87-9117-58110f32f9c5")
+        // .limit(1)
+        .maybeSingle();
+      console.log({ data, error });
+
+      const resp2 = await supabase
+        .from("orders")
+        .select()
+        .eq("customer_id", uid);
+      // .limit(1)
+      // .maybeSingle();
+      console.log({ resp2 });
+    };
+
+    // fetchData();
+  }, []);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -405,9 +420,10 @@ const App = () => {
       setText("");
       notify({ title: "Fetching...", status: "info" });
       const { data, error } = await supabase.functions.invoke(route_name, {
-        region: FunctionRegion.ApSoutheast1,
+        // region: FunctionRegion.ApSoutheast1,
         headers: {
           "x-invoke-func": function_name,
+          "x-region": FunctionRegion.ApSoutheast1,
         },
         body: {
           payload,
@@ -437,7 +453,7 @@ const App = () => {
 
       const response = data?.data;
 
-      if (response) {
+      if (response && function_name === "create-order") {
         onOpenProgressModal();
         setOrderContext((curr) => ({ ...curr, tx_id: response.txId }));
 
@@ -755,6 +771,9 @@ const App = () => {
                   </option>
                 </optgroup>
                 <optgroup label="partner-order">
+                  <option value="update-partner-order-status">
+                    update-partner-order-status
+                  </option>
                   <option value="get-list-order-of-partner">
                     get-list-order-of-partner
                   </option>
