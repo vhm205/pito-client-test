@@ -27,6 +27,7 @@ import {
   FunctionsFetchError,
   FunctionsHttpError,
   FunctionsRelayError,
+  FunctionRegion,
 } from "@supabase/supabase-js";
 
 interface Props {
@@ -115,15 +116,29 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
           address: "111 Điện biên phủ",
           is_default: true,
         },
-        voucher_ids: [
-          "aa76ca9d-b185-4099-85f6-e3721e750210",
-          // "db724b2a-bc40-44b2-b534-399ffe54f6db",
-        ],
+        // voucher_ids: [
+        //   "db724b2a-bc40-44b2-b534-399ffe54f6db",
+        //   "511c92d5-1e61-4e0b-bce0-064a8d9bbeff",
+        // ],
       };
+
+      const session = await fetchSession(supabase);
+      console.log({ session });
+
+      // await fetch(`https://temporal-worker-6e2u5rezaa-as.a.run.app/orders`, {
+      //   method: "POST",
+      //   body: JSON.stringify(payload),
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //     "X-Supabase-JWT": `Bearer ${session.data.access_token}`,
+      //   },
+      // }).catch((error) => console.error(error));
+      // return;
 
       const { data, error } = await supabase.functions.invoke("order", {
         headers: {
           "x-invoke-func": "create-order",
+          "x-region": FunctionRegion.ApSoutheast1,
         },
         body: {
           payload,
@@ -149,11 +164,22 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
 
       const response = data?.data;
 
+      if (response.orderId) {
+        setOrderContext((curr: any) => ({
+          ...curr,
+          order_id: response.orderId,
+        }));
+      }
+
       if (response.redirectUrl) {
+        setOrderContext((curr: any) => ({
+          ...curr,
+          tx_id: response.txId,
+          order_id: response.orderId,
+        }));
+
         const redirectTo = response.redirectUrl || "/";
         window.open(redirectTo, "_blank");
-
-        setOrderContext((curr: any) => ({ ...curr, tx_id: response.txId }));
       }
 
       notify({
