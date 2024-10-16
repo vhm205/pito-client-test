@@ -1,4 +1,4 @@
-import React, { FC, useState } from "react";
+import React, { FC, useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import dayjs from "dayjs";
 import {
@@ -55,6 +55,22 @@ const CreateVnPayUrl: FC = () => {
       position: "top-right",
     });
   };
+
+  useEffect(() => {
+    const login = async () => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: "vuhuynhminh9221@gmail.com",
+        password: "Admin@102",
+      });
+      console.log({ data, error });
+
+      if (error) {
+        notify({ title: error.message, status: "success" });
+      }
+    };
+
+    login();
+  }, []);
 
   const initialValues = {
     orderId: uuidv4(),
