@@ -29,6 +29,7 @@ import {
   FunctionsRelayError,
   FunctionRegion,
 } from "@supabase/supabase-js";
+import dayjs from "dayjs";
 
 interface Props {
   supabase: any;
@@ -102,9 +103,7 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
         receiver_name: "User Test",
         receiver_phone: "+84559932493",
         delivery_address: "112 Điện biên phủ",
-        delivery_date: "2024-05-23",
-        delivery_time: "16:30:00",
-        delivery_later: false,
+        delivery_date: dayjs().toISOString(),
         payment_method: "atm",
         bank_code: "ATM",
         vnpay_callback_url: "https://pito.vn",
@@ -116,10 +115,17 @@ export const ShoppingCart: FC<Props> = ({ isOpen, onClose, supabase }) => {
           address: "111 Điện biên phủ",
           is_default: true,
         },
-        // voucher_ids: [
-        //   "db724b2a-bc40-44b2-b534-399ffe54f6db",
-        //   "511c92d5-1e61-4e0b-bce0-064a8d9bbeff",
-        // ],
+        voucher_ids: [
+          // "db724b2a-bc40-44b2-b534-399ffe54f6db",
+          "511c92d5-1e61-4e0b-bce0-064a8d9bbeff",
+          "634b4e6a-af26-4070-9b4b-22233ecd61f9",
+        ],
+        address_detail: {
+          name: "112 Điện biên phủ",
+          building: "Tòa nhà M2 Tech",
+          numberOfApartment: "123",
+          companyName: "M2 Tech",
+        },
       };
 
       const session = await fetchSession(supabase);
