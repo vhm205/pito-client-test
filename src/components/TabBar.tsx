@@ -8,15 +8,15 @@ const TabBar = () => {
   return (
     <Tabs
       variant="enclosed"
-      index={location.pathname === "/create-vnpay" ? 0 : 1}
+      index={location.pathname === "/tools" ? 1 : 0}
       className="bg-white shadow-md overflow-auto"
     >
       <TabList>
-        <Tab as={Link} to="/tools">
-          Supabase Tools
-        </Tab>
         <Tab as={Link} to="/create-vnpay">
           Create Link VNPAY
+        </Tab>
+        <Tab as={Link} to="/tools">
+          Supabase Tools
         </Tab>
       </TabList>
     </Tabs>
