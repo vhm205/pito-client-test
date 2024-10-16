@@ -12,9 +12,9 @@ const App = () => {
           <TabBar />
           <div className="container mx-auto mt-4">
             <Routes>
-              <Route path="/tools" element={<SupabaseTools />} />
               <Route path="/create-vnpay" element={<CreateVnPayUrl />} />
-              <Route path="/" element={<SupabaseTools />} />
+              <Route path="/tools" element={<SupabaseTools />} />
+              <Route path="/" element={<CreateVnPayUrl />} />
             </Routes>
           </div>
         </div>

@@ -8,7 +8,7 @@ const TabBar = () => {
   return (
     <Tabs
       variant="enclosed"
-      index={location.pathname === "/create-vnpay" ? 1 : 0}
+      index={location.pathname === "/create-vnpay" ? 0 : 1}
       className="bg-white shadow-md overflow-auto"
     >
       <TabList>
